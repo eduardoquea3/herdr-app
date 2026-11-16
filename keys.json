@@ -51,6 +51,7 @@
     "ctrl-shift-p": "app.palette",
     "ctrl-,": "app.settings",
     "ctrl-shift-o": "pane.split:right",
+    "alt-shift-o": "mod.open:open-with",
     "ctrl-shift-e": "pane.split:down",
     "ctrl-shift-w": "tab.close",
     "ctrl-shift-x": "pane.close",
