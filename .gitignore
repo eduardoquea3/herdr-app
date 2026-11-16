@@ -3,4 +3,7 @@
 /telemetry/
 /seen.json
 /shared.json
-/data/frame-palette/
+/data/
+/layouts/.state/
+/mods/*/gpui-kit.d.ts
+/mods/*/jsconfig.json
