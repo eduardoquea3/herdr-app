@@ -1,0 +1,548 @@
+// Git panel: Changes stages and commits what is tracked. History is read-only.
+// Clicking a changed file opens its diff as a tab (zed-diff). Commit tracked never runs git add.
+
+import { View, div, svg } from "gpui-kit";
+import { v_flex, h_flex, TextareaState, Textarea, InputState, Input } from "gpui-base";
+import { spaces, panes, focused, exec, watchFolder, theme, home, props, run, openOverlay, shared, setShared } from "herdr";
+import { openDiff, openFileTab } from "./open-diff.js";
+import { parseStatus, stagePlan, stageAllPlan, commitPlan, branchLabel, tooManyChanges, parseBranches, switchArgs, BRANCH_FORMAT, deleteArgs, canDelete, deletedNote, filterBranches, canCreate, createArgs, unpushedArgs, parseCount, listHeight, syncArgs, needsRemote, isForce, parseAheadBehind, primaryAction, summarize, SYNC_MENU, fileMenu, discardArgs, discardNote, ignoreLine, appendLineScript, pickRemote, prState, parsePrView, parsePrUrl, prCreateArgs, prDefaults } from "./plan.js";
+
+let lastTerminal = null; // where the last focused terminal was
+function location() {
+  const space = spaces().find(s => s.active), f = focused();
+  const pane = f?.pane ? panes().find(p => p.pane === f.pane) : null;
+  const on = f?.pane === null ? (f.terminal?.includes("/") ? f.terminal.split("/")[0] : null) : space?.machine ?? null;
+  const where = { cwd: pane?.cwd || f?.cwd || space?.folder, on };
+  // A mod tab (a diff or a file) has no folder of its own: keep listing the repository you opened it from.
+  if (pane?.mod && lastTerminal) return lastTerminal;
+  if (!pane?.mod) lastTerminal = where;
+  return where;
+}
+const key = () => JSON.stringify(location());
+const READ = ["--no-optional-locks", "-c", "core.fsmonitor=false", "-c", "diff.autoRefreshIndex=false"];
+
+// The branches of a repository, ready for the picker (empty when git fails).
+async function listBranches(root, on) {
+  const r = await exec("git", [...READ, "for-each-ref", "--sort=-committerdate", `--format=${BRANCH_FORMAT}`, "refs/heads", "refs/remotes"], { cwd: root, on }).catch(() => null);
+  return r?.code === 0 ? parseBranches(r.stdout) : [];
+}
+
+const SYNCING = { fetch: "Fetching…", "fetch-from": "Fetching…", pull: "Pulling…", "pull-rebase": "Pulling…", push: "Pushing…", "push-to": "Pushing…", "force-push": "Pushing…" };
+
+export default class ZedChanges extends View {
+  init(_given, cx) {
+    if (props()?.prDialog) { // the Create PR dialog: this same mod draws it
+      this.prDialog = props(); this.menuError = null; this.busy = null; this.draft = false;
+      this.prTitle = InputState.new({ value: this.prDialog.title, placeholder: "Pull request title" });
+      this.prBase = InputState.new({ value: this.prDialog.base ?? "", placeholder: "Base branch (default if empty)" });
+      this.prBody = TextareaState.new({ placeholder: "Description (optional)", rows: 6 });
+      this.prBody.set_value(this.prDialog.body);
+      try { this.prTitle.focus(); } catch { /* not ready yet: the box still takes a click */ }
+      return;
+    }
+    if (props()?.sync) { this.syncMenu = props(); this.menuError = null; this.pending = null; this.syncing = null; return; } // the sync popup: this same mod draws it
+    if (props()?.fileMenu) { this.fileMenu = props(); this.menuError = null; return; } // the file's right-click popup: this same mod draws it
+    if (props()?.confirm) { this.dialog = props(); this.menuError = null; return; } // the delete modal: this same mod draws it
+    if (props()?.menu) { // the branch popup: this same mod draws it
+      this.menu = props(); this.menuError = null; this.menuNote = null;
+      this.search = InputState.new({ placeholder: "Switch or type to create a branch..." });
+      this.search.on("change", (_e, cx2) => cx2.notify());
+      this.search.on("submit", (_e, cx2) => this.submitSearch(cx2));
+      try { this.search.focus(); } catch { /* not ready yet: the box still takes a click */ }
+      return;
+    }
+    this.files = [];
+    this.history = [];
+    this.tab = "changes";
+    this.selected = null;
+    this.tooMany = false;
+    this.remotes = [];
+    this.upstream = false;
+    this.branchRef = "";
+    this.defaultBranch = null;
+    this.pr = null;
+    this.ahead = 0;
+    this.behind = 0;
+    this.syncing = null;
+    this.branch = "";
+    this.message = "";
+    this.handle = cx.focus_handle();
+    this.input = TextareaState.new({ placeholder: "Enter commit message", rows: 5 });
+    this.input.on("change", (_e, cx) => { this.message = this.input.value(); cx.notify(); });
+    this.input.on("submit", (_e, cx) => this.commit(cx));
+    this.refresh(cx);
+    cx.timer.every(10000, cx => this.refresh(cx));
+  }
+
+  watch(root, cx) {
+    if (this.on || this.watched === root) return;
+    this.watched = root;
+    const context = this.context;
+    cx.spawn(async cx => {
+      try {
+        while (this.context === context) {
+          await watchFolder(root);
+          if (this.context === context) this.refresh(cx);
+        }
+      } catch { if (this.context === context) this.watched = null; }
+    });
+  }
+
+  refresh(cx) {
+    if (this.loading || this.busy) return;
+    const here = location(), context = key();
+    if (context !== this.context) {
+      this.context = context;
+      this.root = null;
+      this.files = [];
+      this.history = [];
+      this.selected = null;
+      this.tooMany = false;
+      this.branch = "";
+      this.branchRef = "";
+      this.prKey = null;
+      this.error = null;
+      this.note = null;
+      this.watched = null;
+    }
+    if (!here.cwd) return;
+    this.loading = true;
+    cx.spawn(async cx => {
+      try {
+        const git = args => exec("git", [...READ, ...args], { cwd: here.cwd, on: here.on });
+        const top = await git(["rev-parse", "--show-toplevel"]);
+        if (key() !== context) return;
+        if (top.code !== 0) { this.root = null; this.error = "Not a git repository"; return; }
+        const root = top.stdout.trim();
+        const at = args => exec("git", [...READ, ...args], { cwd: root, on: here.on });
+        if (!here.on && tooManyChanges(root, home(), 0)) {
+          // Never run `status` here: it would walk the whole home directory.
+          this.root = root; this.on = here.on; this.files = []; this.history = []; this.selected = null; this.remotes = [];
+          this.branch = "—"; this.tooMany = true; this.error = "Your home folder is a git repository: too many changes to list";
+          return;
+        }
+        const [status, branch, log, remotes, counts] = await Promise.all([
+          at(["status", "--porcelain=v1", "-z", "--no-renames", "--untracked-files=all"]),
+          at(["symbolic-ref", "--short", "-q", "HEAD"]),
+          at(["log", "-30", "--pretty=format:%h%x00%s"]),
+          at(["remote"]),
+          at(["rev-list", "--left-right", "--count", "@{upstream}...HEAD"]),
+        ]);
+        if (key() !== context) return;
+        if (status.code !== 0) throw new Error(status.stderr);
+        this.root = root;
+        this.on = here.on;
+        this.history = log.code === 0
+          ? log.stdout.split("\n").filter(Boolean).map(line => { const [hash, subject] = line.split("\0"); return { hash, subject }; })
+          : [];
+        this.branchRef = branch.code === 0 ? branch.stdout.trim() : "";
+        this.branch = branchLabel(this.branchRef, log.code === 0);
+        this.remotes = remotes.code === 0 ? remotes.stdout.split("\n").map(r => r.trim()).filter(Boolean) : [];
+        const ab = counts.code === 0 ? parseAheadBehind(counts.stdout) : null; // fails without an upstream
+        this.upstream = Boolean(ab); this.ahead = ab?.ahead ?? 0; this.behind = ab?.behind ?? 0;
+        const all = parseStatus(status.stdout);
+        this.tooMany = tooManyChanges(root, home(), all.length);
+        this.files = this.tooMany ? [] : all.slice(0, 1000);
+        if (this.selected && !this.files.some(file => file.path === this.selected)) { this.selected = null; }
+        this.error = this.tooMany ? `Too many changes to list (${all.length})` : null;
+        this.watch(root, cx);
+        this.checkPr(cx);
+      } catch (e) { if (key() === context) this.error = String(e.message || e); }
+      finally { if (key() === context) this.loading = false; cx.notify(); }
+    });
+  }
+
+  // --- Pull requests, through gh. Looked up once per repository and branch (it hits the network), and
+  // again after a push or a created PR. No default branch means gh is missing or signed out: no button.
+  checkPr(cx) {
+    const { root, on, branchRef } = this, k = `${root}|${on}|${branchRef}`;
+    if (!root || !branchRef || this.prKey === k) return;
+    this.prKey = k; this.pr = null; this.defaultBranch = null;
+    const gh = args => exec("gh", args, { cwd: root, on }).catch(e => ({ code: 1, stdout: "", stderr: String(e.message || e) }));
+    cx.spawn(async cx => {
+      const [repo, view] = await Promise.all([gh(["repo", "view", "--json", "defaultBranchRef", "-q", ".defaultBranchRef.name"]), gh(["pr", "view", "--json", "url,state"])]);
+      if (this.prKey !== k) return;
+      this.defaultBranch = repo.code === 0 ? repo.stdout.trim() || null : null;
+      this.pr = view.code === 0 ? parsePrView(view.stdout) : null;
+      cx.notify();
+    });
+  }
+
+  prButton() {
+    return this.root && !this.tooMany ? prState({ branch: this.branchRef, defaultBranch: this.defaultBranch, remotes: this.remotes, url: this.pr }) : null;
+  }
+
+  async openPr(cx) {
+    const last = await exec("git", [...READ, "log", "-1", "--format=%s%x00%b"], { cwd: this.root, on: this.on }).catch(() => null);
+    const { title, body } = prDefaults(last?.code === 0 ? last.stdout : "");
+    openOverlay({ mod: "zed-changes", kind: "dialog", width: 460, height: 440, props: {
+      prDialog: true, base: this.defaultBranch, root: this.root, on: this.on, remotes: this.remotes, upstream: this.upstream, branch: this.branchRef, title, body } });
+  }
+
+  // View PR opens the browser through gh on this machine; on a remote machine it copies the URL.
+  viewPr(url, cx) {
+    if (this.on) { cx.write_to_clipboard(url); setShared("zed-changes.result", { text: `Copied ${url}`, ok: true, at: Date.now() }); cx.notify(); return; }
+    cx.spawn(async cx => {
+      const r = await exec("gh", ["pr", "view", "--web"], { cwd: this.root }).catch(e => ({ code: 1, stdout: "", stderr: String(e.message || e) }));
+      if (r.code !== 0) { setShared("zed-changes.result", { text: summarize(r.stdout, r.stderr), ok: false, at: Date.now() }); cx.notify(); }
+    });
+  }
+
+  // Publishes the branch when it has no upstream, then creates the PR. A failure stays in the dialog.
+  async submitPr(cx) {
+    const d = this.prDialog;
+    if (this.busy) return;
+    const args = prCreateArgs({ title: this.prTitle.value(), body: this.prBody.value(), base: this.prBase.value(), draft: this.draft });
+    if (args.error) { this.menuError = args.error; cx.notify(); return; }
+    this.menuError = null; this.busy = "Creating…"; cx.notify();
+    const at = (cmd, a) => exec(cmd, cmd === "git" ? [...READ, ...a] : a, { cwd: d.root, on: d.on }).catch(e => ({ code: 1, stdout: "", stderr: String(e.message || e) }));
+    let r = d.upstream ? { code: 0 } : await at("git", syncArgs("push", { upstream: false, remote: pickRemote(d.remotes) }));
+    if (r.code === 0) r = await at("gh", args);
+    this.busy = null;
+    if (r.code !== 0) { this.menuError = summarize(r.stdout, r.stderr); cx.notify(); return; }
+    setShared("zed-changes.result", { text: parsePrUrl(r.stdout) ?? "Pull request created", ok: true, at: Date.now() });
+    run("overlay.close", { id: d.overlay });
+  }
+
+  renderPrDialog() {
+    const t = theme(), d = this.prDialog;
+    const button = (id, label, bg, color, act) => div().id(id).h(30).px(14).flex().items_center().rounded(6).cursor_pointer().text_size(12.5)
+      .bg(bg).text_color(color).on_click((_e, cx) => act(cx)).child(label);
+    return v_flex().id("zed-pr").w_full().p(18).gap(10).bg(t.popover).text_color(t.foreground)
+      .child(div().text_size(15).font_semibold().child("Create pull request"))
+      .child(div().text_size(12).text_color(t.muted).child(`${d.branch}${d.upstream ? "" : " · will be published first"}`))
+      .child(div().h(34).px(10).flex().items_center().rounded(6).border(1).border_color(t.border).bg(t.background).text_size(12.5)
+        .child(Input.new(this.prTitle).size_full().text_color(t.foreground)))
+      .child(div().h(130).px(8).py(6).rounded(6).border(1).border_color(t.border).bg(t.background)
+        .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+        .child(Textarea.new(this.prBody).size_full().text_size(12).text_color(t.foreground)))
+      .child(h_flex().gap(8).items_center()
+        .child(div().flex_none().text_size(12).text_color(t.muted).child("Base branch"))
+        .child(div().flex_1().h(30).px(10).flex().items_center().rounded(6).border(1).border_color(t.border).bg(t.background).text_size(12.5)
+          .child(Input.new(this.prBase).size_full().text_color(t.foreground))))
+      .child(this.chip("pr-draft", this.draft ? "✓ Draft" : "Draft", this.draft, cx => { this.draft = !this.draft; cx.notify(); }, t))
+      .when(Boolean(this.menuError), el => el.child(div().text_size(11.5).text_color(t.ansi1).child(this.menuError)))
+      .child(h_flex().gap(8).justify_end().pt(4)
+        .child(button("pr-cancel", "Cancel", t.raised, t.muted, () => run("overlay.close", { id: d.overlay })))
+        .child(button("pr-create", this.busy ?? "Create", t.solid, t.solid_foreground, cx => cx.spawn(async cx => this.submitPr(cx)))));
+  }
+
+  pick(path, cx) {
+    this.selected = path;
+    const file = this.files.find(item => item.path === path);
+    if (file && this.root) openDiff({ root: this.root, path, xy: file.xy, on: this.on }, cx);
+    cx.notify();
+  }
+
+  // Lists the branches and opens the picker as a popup under the branch name.
+  async openBranches() {
+    if (!this.root || this.tooMany) return;
+    const branches = await listBranches(this.root, this.on);
+    openOverlay({ mod: "zed-changes", kind: "popup", width: 400, height: listHeight(branches, true) + 100, props: { menu: true, root: this.root, on: this.on, branches } });
+  }
+
+  async runGit(args) {
+    const { root, on } = this.menu ?? this.dialog;
+    return exec("git", [...READ, ...args], { cwd: root, on }).catch(e => ({ code: 1, stdout: "", stderr: String(e.message || e) }));
+  }
+
+  fail(r, cx) {
+    this.menuError = (r.stderr || "git failed").trim().split("\n").slice(0, 3).join(" ");
+    this.menuNote = null;
+    cx.notify();
+  }
+
+  async pickBranch(branch, cx) {
+    if (branch.current) { run("overlay.close"); return; }
+    const r = await this.runGit(switchArgs(branch.name));
+    if (r.code === 0) run("overlay.close"); else this.fail(r, cx);
+  }
+
+  async createBranch(name, cx) {
+    const r = await this.runGit(createArgs(name));
+    if (r.code === 0) run("overlay.close"); else this.fail(r, cx);
+  }
+
+  // --- Fetch / pull / push. The button beside the branch name runs the likely one; its ▾ opens a popup.
+  openSyncMenu() {
+    if (!this.root || this.tooMany) return;
+    openOverlay({ mod: "zed-changes", kind: "popup", width: 250, height: 280, props: { sync: true, root: this.root, on: this.on, remotes: this.remotes, upstream: this.upstream, branch: this.branch } });
+  }
+
+  // Runs a menu entry. In the popup a failure stays visible there; a success closes it. Either way the
+  // outcome is published as `zed-changes.result`, which the panel shows for a few seconds.
+  async doSync(op, remote, cx) {
+    const src = this.syncMenu ?? this, args = syncArgs(op, { remote, upstream: src.upstream });
+    if (!args || this.syncing) return;
+    this.syncing = SYNCING[op]; this.menuError = null; cx.notify();
+    const r = await exec("git", [...READ, ...args], { cwd: src.root, on: src.on }).catch(e => ({ code: 1, stdout: "", stderr: String(e.message || e) }));
+    this.syncing = null;
+    if (r.code === 0) this.prKey = null; // a push can make the PR button appear: look again
+    const text = summarize(r.stdout, r.stderr);
+    setShared("zed-changes.result", { text, ok: r.code === 0, at: Date.now() });
+    if (this.syncMenu) { if (r.code === 0) run("overlay.close", { id: this.syncMenu.overlay }); else { this.menuError = text; this.pending = null; } }
+    else this.refresh(cx);
+    cx.notify();
+  }
+
+  requestSync(op, cx) {
+    if (needsRemote(op)) { this.pending = op; cx.notify(); return; }
+    if (isForce(op)) {
+      const { root, on, overlay, upstream, branch } = this.syncMenu;
+      run("overlay.close", { id: overlay });
+      openOverlay({ mod: "zed-changes", kind: "dialog", width: 400, height: 200, props: {
+        confirm: true, sync: true, root, on, args: syncArgs(op, { upstream }),
+        title: `Force push ${branch}?`,
+        body: "This overwrites the remote branch with yours. It uses --force-with-lease, so git refuses if someone pushed since your last fetch; commits only the remote has are lost.",
+      } });
+      return;
+    }
+    cx.spawn(async cx => this.doSync(op, undefined, cx));
+  }
+
+  // --- Right-click menu of a changed file (Stage, Discard, Copy Path, ignore, Open Diff, View File).
+  openFileMenu(file, cx) {
+    this.selected = file.path;
+    cx.notify();
+    const rows = fileMenu(file), dividers = rows.filter(r => r === "-").length;
+    openOverlay({ mod: "zed-changes", kind: "popup", width: 260, height: 12 + (rows.length - dividers) * 30 + dividers * 9, props: { fileMenu: true, root: this.root, on: this.on, file } });
+  }
+
+  async runFileAction(id, cx) {
+    const { root, on, file, overlay } = this.fileMenu, abs = `${root}/${file.path}`;
+    const close = () => run("overlay.close", { id: overlay });
+    const fail = r => { this.menuError = (r.stderr || "failed").trim().split("\n").slice(0, 3).join(" "); cx.notify(); };
+    if (id === "copy-path") { cx.write_to_clipboard(abs); close(); return; }
+    if (id === "copy-relative") { cx.write_to_clipboard(file.path); close(); return; }
+    if (id === "open-diff") { openDiff({ root, path: file.path, xy: file.xy, on }, cx); close(); return; }
+    if (id === "view-file") { openFileTab(abs, on, cx); close(); return; }
+    if (id === "discard") {
+      close();
+      openOverlay({ mod: "zed-changes", kind: "dialog", width: 400, height: 190, props: {
+        confirm: true, root, on, args: discardArgs(file), title: `Discard changes to ${file.path}?`, body: discardNote(file) } });
+      return;
+    }
+    const run_ = (cmd, args) => exec(cmd, args, { cwd: root, on }).catch(e => ({ code: 1, stdout: "", stderr: String(e.message || e) }));
+    let r;
+    if (id === "stage") r = await run_("git", [...READ, ...stagePlan(file)]);
+    else if (id === "gitignore") r = await run_("sh", ["-c", appendLineScript, "sh", `${root}/.gitignore`, ignoreLine(file.path)]);
+    else if (id === "exclude") {
+      const where = await run_("git", [...READ, "rev-parse", "--path-format=absolute", "--git-path", "info/exclude"]);
+      r = where.code === 0 ? await run_("sh", ["-c", appendLineScript, "sh", where.stdout.trim(), ignoreLine(file.path)]) : where;
+    }
+    if (r?.code === 0) close(); else if (r) fail(r);
+  }
+
+  renderFileMenu() {
+    const t = theme();
+    const row = e => e === "-" ? div().h(1).my(4).bg(t.border)
+      : h_flex().id(`file-${e.id}`).h(30).px(10).items_center().rounded(6).text_size(12.5)
+        .when(e.enabled, el => el.cursor_pointer().text_color(t.foreground).hover(s => s.bg(t.selected))
+          .on_click((_e, cx) => cx.spawn(async cx => this.runFileAction(e.id, cx))))
+        .when(!e.enabled, el => el.text_color(t.dim))
+        .child(div().flex_1().min_w(0).truncate().child(e.label));
+    return v_flex().id("zed-file-menu").w_full().p(6).bg(t.popover)
+      .children(fileMenu(this.fileMenu.file).map(row))
+      .when(Boolean(this.menuError), el => el.child(div().px(10).py(6).text_size(11.5).text_color(t.ansi1).child(this.menuError)));
+  }
+
+  renderSyncMenu() {
+    const t = theme(), { remotes } = this.syncMenu;
+    const row = (id, label, act, hint) => h_flex().id(id).h(30).px(10).gap(8).items_center().rounded(6).cursor_pointer().text_size(12.5)
+      .text_color(this.syncing ? t.dim : t.foreground).hover(s => s.bg(t.selected)).on_click((_e, cx) => { if (!this.syncing) act(cx); })
+      .child(div().flex_1().min_w(0).truncate().child(label))
+      .when(Boolean(hint), el => el.child(div().flex_none().text_size(11).text_color(t.dim).child(hint)));
+    const body = this.pending
+      ? [div().px(10).pt(6).pb(4).text_size(11.5).text_color(t.dim).child(this.pending === "fetch-from" ? "Fetch from" : "Push to"),
+        ...remotes.map(r => row(`sync-remote-${r}`, r, cx => cx.spawn(async cx => this.doSync(this.pending, r, cx)))),
+        row("sync-back", "Back", cx => { this.pending = null; cx.notify(); })]
+      : SYNC_MENU.map(entry => entry === "-" ? div().h(1).my(4).bg(t.border) : row(`sync-${entry[0]}`, entry[1], cx => this.requestSync(entry[0], cx)));
+    return v_flex().id("zed-sync").w_full().p(6).bg(t.popover)
+      .when(Boolean(this.syncing), el => el.child(div().px(10).py(6).text_size(12).text_color(t.accent).child(this.syncing)))
+      .children(body)
+      .when(Boolean(this.menuError), el => el.child(div().px(10).py(6).text_size(11.5).text_color(t.ansi1).child(this.menuError)));
+  }
+
+  // Handlers below take the `cx` of a `cx.spawn` task: an event handler's own `cx` is only valid until
+  // the handler returns, so `cx.notify()` after an `await` on it never redraws.
+  // Enter in the search box: create the typed name if it is new, else switch to the first match.
+  submitSearch(cx) {
+    const query = this.search.value(), branches = this.menu.branches;
+    if (canCreate(branches, query)) cx.spawn(async cx => this.createBranch(query.trim(), cx));
+    else { const first = filterBranches(branches, query)[0]; if (first) cx.spawn(async cx => this.pickBranch(first, cx)); }
+  }
+
+  // The trash icon deletes at once. Only a branch with commits no remote has asks first, in a modal.
+  async requestDelete(branch, cx) {
+    const count = parseCount((await this.runGit(unpushedArgs(branch.name))).stdout);
+    if (count === 0) { await this.deleteNow(branch.name, cx); return; }
+    const { root, on, overlay } = this.menu;
+    run("overlay.close", { id: overlay });
+    openOverlay({ mod: "zed-changes", kind: "dialog", width: 400, height: 190, props: {
+      confirm: true, root, on, args: deleteArgs(branch.name),
+      title: `Delete branch ${branch.name}?`,
+      body: `It has ${count} commit${count === 1 ? "" : "s"} that no remote has. They will be lost from the branch; git reflog can still recover them for a while.`,
+    } });
+  }
+
+  async deleteNow(name, cx) {
+    const r = await this.runGit(deleteArgs(name));
+    if (r.code !== 0) { this.fail(r, cx); return; }
+    const { root, on } = this.menu;
+    this.menu = { ...this.menu, branches: await listBranches(root, on) };
+    this.menuError = null;
+    this.menuNote = deletedNote(name, r.stdout);
+    cx.notify();
+  }
+
+  // The modal: accept runs the command it was opened with (delete a branch, force push), cancel closes it.
+  async acceptConfirm(cx) {
+    const r = await this.runGit(this.dialog.args);
+    if (r.code !== 0) { this.fail(r, cx); return; }
+    if (this.dialog.sync) setShared("zed-changes.result", { text: summarize(r.stdout, r.stderr), ok: true, at: Date.now() });
+    run("overlay.close", { id: this.dialog.overlay });
+  }
+
+  renderDialog() {
+    const t = theme(), { title, body } = this.dialog;
+    const button = (id, label, bg, color, act) => div().id(id).h(30).px(14).flex().items_center().rounded(6).cursor_pointer().text_size(12.5)
+      .bg(bg).text_color(color).on_click((_e, cx) => act(cx)).child(label);
+    return v_flex().id("zed-confirm").w_full().p(18).gap(10).bg(t.popover).text_color(t.foreground)
+      .child(div().text_size(15).font_semibold().child(title))
+      .child(div().text_size(12.5).text_color(t.muted).child(body))
+      .when(Boolean(this.menuError), el => el.child(div().text_size(11.5).text_color(t.ansi1).child(this.menuError)))
+      .child(h_flex().gap(8).justify_end().pt(4)
+        .child(button("confirm-cancel", "Cancel", t.raised, t.muted, () => run("overlay.close", { id: this.dialog.overlay })))
+        .child(button("confirm-accept", "Accept", t.ansi1, t.background, cx => cx.spawn(async cx => this.acceptConfirm(cx)))));
+  }
+
+  // The branch popup, laid out like Zed's: sections, two-line rows (name, then author · age · subject),
+  // a trash icon on deletable rows, and a search box at the bottom that also creates branches.
+  renderMenu() {
+    const t = theme(), query = this.search?.value() ?? "", all = this.menu.branches;
+    const shown = filterBranches(all, query), local = shown.filter(b => !b.remote), remote = shown.filter(b => b.remote);
+    const heading = text => div().px(10).pt(10).pb(4).text_size(11.5).text_color(t.dim).child(text);
+    const row = b => h_flex().id(`branch-${b.remote ?? "local"}-${b.name}`).px(10).py(7).gap(10).items_center().rounded(8).cursor_pointer()
+      .hover(s => s.bg(t.selected)).on_click((_e, cx) => cx.spawn(async cx => this.pickBranch(b, cx)))
+      .child(div().size(16).flex_none().flex().items_center().justify_center()
+        .child(svg(b.current ? "mods/zed-changes/icons/check.svg" : b.remote ? "mods/zed-changes/icons/cloud.svg" : "mods/zed-changes/icons/git-branch.svg").size(15)
+          .text_color(b.current ? t.accent : t.dim)))
+      .child(v_flex().flex_1().min_w(0).gap(2)
+        .child(div().truncate().text_size(13.5).text_color(t.foreground).child(b.remote ? `${b.remote}/${b.name}` : b.name))
+        .child(div().truncate().text_size(11.5).text_color(t.dim).child([b.author, b.age, b.subject].filter(Boolean).join("  •  "))))
+      .when(canDelete(b), el => el.child(div().id(`branch-trash-${b.name}`).size(26).flex_none().flex().items_center().justify_center().rounded(6)
+        .hover(s => s.bg(t.raised)).tooltip(`Delete ${b.name}`)
+        .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+        .on_click((_e, cx) => { cx.stop_propagation(); cx.spawn(async cx => this.requestDelete(b, cx)); })
+        .child(svg("mods/zed-changes/icons/trash.svg").size(14).text_color(t.dim))));
+    const create = canCreate(all, query)
+      ? h_flex().id("branch-create").px(10).py(9).gap(10).items_center().rounded(8).cursor_pointer().text_size(13).text_color(t.accent)
+        .hover(s => s.bg(t.selected)).on_click((_e, cx) => cx.spawn(async cx => this.createBranch(query.trim(), cx)))
+        .child(`Create branch “${query.trim()}”`)
+      : null;
+    return v_flex().id("zed-branches").w_full().p(6).bg(t.popover)
+      .child(v_flex().id("branch-list").h(Math.max(40, listHeight(shown, Boolean(create)))).overflow_y_scrollbar()
+        .when(local.length > 0, el => el.child(heading("Local Branches")).children(local.map(row)))
+        .when(remote.length > 0, el => el.child(heading("Remote Branches")).children(remote.map(row)))
+        .when(shown.length === 0 && !create, el => el.child(div().px(10).py(10).text_size(12).text_color(t.dim).child("No matching branches")))
+        .when(Boolean(create), el => el.child(create)))
+      .when(Boolean(this.menuError), el => el.child(div().px(10).py(6).text_size(11.5).text_color(t.ansi1).child(this.menuError)))
+      .when(Boolean(this.menuNote), el => el.child(div().px(10).py(6).text_size(11.5).text_color(t.muted).child(this.menuNote)))
+      .child(div().mt(4).h(36).px(10).flex().items_center().border_t(1).border_color(t.border).text_size(12.5)
+        .child(Input.new(this.search).size_full().text_color(t.foreground)));
+  }
+
+  git(args, cx, after) {
+    if (!this.root || this.busy) return;
+    const context = this.context;
+    this.busy = true;
+    this.note = null;
+    cx.spawn(async cx => {
+      try {
+        const r = await exec("git", args, { cwd: this.root, on: this.on });
+        if (r.code !== 0) throw new Error((r.stderr || r.stdout).trim());
+        if (key() === context && after) after();
+      } catch (e) { if (key() === context) this.note = String(e.message || e); }
+      finally { this.busy = false; this.refresh(cx); cx.notify(); }
+    });
+    cx.notify();
+  }
+
+  commit(cx) {
+    const plan = commitPlan(this.message, this.files);
+    if (plan.error) { this.note = plan.error; cx.notify(); return; }
+    this.git(plan.args, cx, () => { this.message = ""; this.input.set_value(""); });
+  }
+
+  chip(id, label, on, action, t) {
+    return div().id(id).h(24).px(8).flex().items_center().rounded(5).cursor_pointer().flex_none().text_size(12)
+      .bg(on ? t.selected : t.chrome).text_color(on ? t.foreground : t.muted)
+      .hover(s => s.bg(t.hover)).on_click((_e, cx) => action(cx)).child(label);
+  }
+
+  render() {
+    if (this.prDialog) return this.renderPrDialog();
+    if (this.dialog) return this.renderDialog();
+    if (this.syncMenu) return this.renderSyncMenu();
+    if (this.fileMenu) return this.renderFileMenu();
+    if (this.menu) return this.renderMenu();
+    const t = theme();
+    const act = this.root && !this.tooMany ? primaryAction({ remotes: this.remotes, upstream: this.upstream, ahead: this.ahead, behind: this.behind }) : null;
+    const pr = this.prButton();
+    const result = shared("zed-changes.result"), showResult = result && Date.now() - result.at < 12000;
+    const letter = xy => xy.includes("U") ? "U" : xy.includes("D") ? "D" : xy.includes("A") || xy === "??" ? "A" : "M";
+    return v_flex().id("zed-changes").size_full().min_h(0).bg(t.chrome).text_color(t.foreground).text_size(13).track_focus(this.handle)
+      .child(h_flex().h(34).flex_none().px(8).gap(6).items_center().border_b(1).border_color(t.border)
+        .child(this.chip("zed-changes-tab", "Changes", this.tab === "changes", cx => { this.tab = "changes"; cx.notify(); }, t))
+        .child(this.chip("zed-history-tab", "History", this.tab === "history", cx => { this.tab = "history"; cx.notify(); }, t))
+        .child(div().flex_1())
+        .when(this.tab === "changes", el => el
+          .when(!this.tooMany, el => el.child(this.chip("zed-stage-all", "Stage All", false, cx => this.git(stageAllPlan(), cx), t)))))
+      .child(v_flex().flex_1().min_h(0).overflow_y_scrollbar()
+        .when(this.tab === "history", el => el.children(this.history.map(commit =>
+          h_flex().h(28).flex_none().px(12).gap(8).items_center()
+            .child(div().text_color(t.dim).text_size(12).child(commit.hash))
+            .child(div().flex_1().min_w(0).truncate().child(commit.subject)))))
+        .when(this.tab === "changes" && this.files.length > 0, el => el.children(this.files.map(file =>
+          h_flex().id(`zed-change-${file.path}`).h(26).flex_none().px(8).gap(8).items_center().cursor_pointer()
+            .bg(this.selected === file.path ? t.selected : t.chrome)
+            .hover(s => s.bg(t.hover))
+            .on_click((_e, cx) => this.pick(file.path, cx))
+            .on_mouse_down("right", (_e, cx) => this.openFileMenu(file, cx))
+            .child(div().id(`zed-stage-${file.path}`).size(16).flex_none().flex().items_center().justify_center().rounded(3)
+              .border(1).border_color(file.staged ? t.accent : t.border).bg(file.staged ? t.accent : t.chrome)
+              .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+              .on_click((_e, cx) => { cx.stop_propagation(); this.git(stagePlan(file), cx); }))
+            .child(div().w(12).text_size(11).text_color(letter(file.xy) === "D" ? t.ansi1 : letter(file.xy) === "A" ? t.ansi2 : t.blocked).child(letter(file.xy)))
+            .child(div().flex_1().min_w(0).truncate().child(file.path)))))
+        .when(this.tab === "changes" && !this.files.length, el => el.child(div().flex_1().flex().items_center().justify_center().text_color(t.dim)
+          .child(this.error || (this.loading ? "Loading…" : this.root ? "No changes to commit" : "No folder"))))
+        .when(this.tab === "history" && !this.history.length, el => el.child(div().p(12).text_color(t.dim).child(this.loading ? "Loading…" : "No commits"))))
+      .when(Boolean(showResult), el => el.child(div().px(10).py(4).text_size(11).text_color(result.ok ? t.muted : t.ansi1).child(result.text)))
+      .when(Boolean(this.note), el => el.child(div().px(10).py(4).text_size(11).text_color(t.ansi1).child(this.note)))
+      .when(this.tab === "changes", el => el.child(v_flex().flex_none().gap(8).p(8).border_t(1).border_color(t.border)
+        .child(h_flex().items_center().gap(6)
+          .child(div().id("zed-branch").px(6).py(2).rounded(5).text_size(12).text_color(t.muted)
+            .when(Boolean(this.root) && !this.tooMany, el => el.cursor_pointer().hover(s => s.bg(t.hover).text_color(t.foreground)).on_click(() => this.openBranches()))
+            .child(`${this.branch || "detached"}${this.root && !this.tooMany ? " ▾" : ""}`))
+          .child(div().flex_1())
+          .when(Boolean(pr), el => el.child(div().id("zed-pr-button").h(24).px(8).flex().items_center().rounded(5).cursor_pointer().text_size(12)
+            .bg(t.raised).text_color(t.foreground).hover(s => s.bg(t.hover))
+            .on_click((_e, cx) => pr.kind === "view" ? this.viewPr(pr.url, cx) : cx.spawn(async cx => this.openPr(cx)))
+            .child(pr.kind === "view" ? "View PR" : "Create PR")))
+          .when(Boolean(act), el => el.child(h_flex().items_center().rounded(5).bg(t.raised).text_size(12)
+            .child(div().id("zed-sync-main").h(24).px(8).flex().items_center().rounded(5).cursor_pointer().text_color(this.syncing ? t.dim : t.foreground)
+              .hover(s => s.bg(t.hover)).on_click((_e, cx) => { if (!this.syncing) cx.spawn(async cx => this.doSync(act.op, undefined, cx)); })
+              .child(this.syncing ?? act.label))
+            .child(div().id("zed-sync-menu").h(24).px(6).flex().items_center().rounded(5).cursor_pointer().text_color(t.muted)
+              .hover(s => s.bg(t.hover)).on_click(() => this.openSyncMenu()).child("▾")))))
+        .child(div().h(112).px(8).py(6).rounded(6).border(1).border_color(t.border).bg(t.background)
+          .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+          .child(Textarea.new(this.input).size_full().text_size(12).text_color(t.foreground)))
+        .child(h_flex().gap(8).justify_end().items_center()
+          .child(div().id("zed-commit").h(30).px(10).flex().items_center().rounded(6).text_size(12)
+            .bg(this.message.trim() && this.files.some(file => file.staged) ? t.solid : t.raised)
+            .text_color(this.message.trim() && this.files.some(file => file.staged) ? t.solid_foreground : t.dim)
+            .cursor_pointer().on_click((_e, cx) => this.commit(cx)).child(this.busy ? "Committing…" : "Commit Tracked")))));
+  }
+}

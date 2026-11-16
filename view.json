@@ -1,0 +1,277 @@
+{
+  "active": "sp5a6ec5654eda320f1a7a026845f86b48",
+  "spaces": {
+    "sp1150b15a9d05408213ce7b0174cb6a38": "tbd305aa96813330d9a733ae35d1571766",
+    "sp1ff76824ca11e330c816fead8524426e": "tb914249e12ce2ae405f9987d741e8c88b",
+    "sp5a6ec5654eda320f1a7a026845f86b48": "tbef440040e073547e47b6fd0ee5909f73",
+    "sp5a8d12c7eb70ce60148edff0d4496e84": "tbe2ba2a24cb3d2e27e4962c54f1c3d177",
+    "sp6d6c3e8715000f007f91816ccf31ad95": "tba3f62334af35674dbade3ed066e5ab6e",
+    "spb0e174c4cc6946cf2f41c899f71e1e1a": "tb5c8368f2698ef01dcded2e0c736f38b2",
+    "spede50b7184329a69ec1d9fe653912b70": "tb65e0b49f6a20b8f2950a12f38789c04f"
+  },
+  "tabs": {
+    "tb2dfcc43555039a1a1d3c8c691cb439d9": {
+      "focused": "pc50222c3078174c724a4d5937419cb83",
+      "before": [],
+      "zoomed": null,
+      "settled": null
+    },
+    "tb493debbcc9d5e3a12f2a7bd04af383da": {
+      "focused": "p37f0005e7351013c8725d54a599bce0d",
+      "before": [],
+      "zoomed": null,
+      "settled": null
+    },
+    "tb5c8368f2698ef01dcded2e0c736f38b2": {
+      "focused": "pc32fb7e3f3cf09a393908fccc13caa97",
+      "before": [],
+      "zoomed": null,
+      "settled": null
+    },
+    "tb65e0b49f6a20b8f2950a12f38789c04f": {
+      "focused": "pd003e1d5e1acfeb061f39b77eca6f94c",
+      "before": [],
+      "zoomed": null,
+      "settled": null
+    },
+    "tb914249e12ce2ae405f9987d741e8c88b": {
+      "focused": "p52e2a24c5172b20cd56de90f9a13329e",
+      "before": [
+        "p6c1ab917e2a406a444fc8da9d1f0a8dc"
+      ],
+      "zoomed": null,
+      "settled": null
+    },
+    "tb9923d179749134981eff09afa487ce5e": {
+      "focused": "paf85281e60fd06efbeb76607d2cc8d39",
+      "before": [
+        "p59bdc92d7f0762ea9b22f86f4f87181d"
+      ],
+      "zoomed": "paf85281e60fd06efbeb76607d2cc8d39",
+      "settled": null
+    },
+    "tba3f62334af35674dbade3ed066e5ab6e": {
+      "focused": "pc481f7eda01ef475bb83c607de9388bc",
+      "before": [
+        "p6105745119fc45eabc961beedc81c5b9"
+      ],
+      "zoomed": null,
+      "settled": null
+    },
+    "tba74cd70f157452dd8b0b893935f8220c": {
+      "focused": "pd30304f86a1a20d69e40084e0b1c22ac",
+      "before": [],
+      "zoomed": null,
+      "settled": null
+    },
+    "tbc37900d27a65681d2ce5a8ec6bf6ef47": {
+      "focused": "p02487efbc7a6a2eedfd108c366078cac",
+      "before": [],
+      "zoomed": null,
+      "settled": null
+    },
+    "tbd305aa96813330d9a733ae35d1571766": {
+      "focused": "p50223dad7b7713a242c77dc054b3c0e1",
+      "before": [],
+      "zoomed": null,
+      "settled": null
+    },
+    "tbe2ba2a24cb3d2e27e4962c54f1c3d177": {
+      "focused": "p70a69fd23a822d55cb8a0416a1e8a00f",
+      "before": [
+        "pb60c96c1a2d8d77d6e8abfb69f9e195d"
+      ],
+      "zoomed": null,
+      "settled": null
+    },
+    "tbef440040e073547e47b6fd0ee5909f73": {
+      "focused": "p65df5b65241afb04f7d14b4380603079",
+      "before": [
+        "p0ced783d149a67ff8c6c236cf8358dfc",
+        "pfcf883e4fe3a693854aee68a6529e777"
+      ],
+      "zoomed": null,
+      "settled": null
+    },
+    "tbf2c7ee12ab5d3e9e005d8605b74e0266": {
+      "focused": "pe3606b63d9473091e011cb303325ad9c",
+      "before": [
+        "p91bebaeb5fac7ad45e894df1dc36260d"
+      ],
+      "zoomed": "pe3606b63d9473091e011cb303325ad9c",
+      "settled": null
+    }
+  },
+  "recent": [
+    {
+      "name": "finance-mobile",
+      "folder": "/home/eduardo"
+    }
+  ],
+  "attention": {
+    "t1": {
+      "word": null,
+      "seen": true
+    },
+    "t10": {
+      "word": null,
+      "seen": true
+    },
+    "t11": {
+      "word": null,
+      "seen": true
+    },
+    "t12": {
+      "word": null,
+      "seen": true
+    },
+    "t13": {
+      "word": null,
+      "seen": true
+    },
+    "t14": {
+      "word": null,
+      "seen": true
+    },
+    "t15": {
+      "word": null,
+      "seen": true
+    },
+    "t16": {
+      "word": null,
+      "seen": true
+    },
+    "t17": {
+      "word": null,
+      "seen": true
+    },
+    "t18": {
+      "word": null,
+      "seen": true
+    },
+    "t19": {
+      "word": null,
+      "seen": true
+    },
+    "t1b": {
+      "word": null,
+      "seen": true
+    },
+    "t1c": {
+      "word": null,
+      "seen": true
+    },
+    "t1d": {
+      "word": null,
+      "seen": true
+    },
+    "t1f": {
+      "word": null,
+      "seen": true
+    },
+    "t1g": {
+      "word": null,
+      "seen": true
+    },
+    "t1h": {
+      "word": null,
+      "seen": true
+    },
+    "t1j": {
+      "word": null,
+      "seen": true
+    },
+    "t1k": {
+      "word": null,
+      "seen": true
+    },
+    "t1m": {
+      "word": null,
+      "seen": true
+    },
+    "t1n": {
+      "word": null,
+      "seen": true
+    },
+    "t1p": {
+      "word": null,
+      "seen": true
+    },
+    "t1q": {
+      "word": null,
+      "seen": true
+    },
+    "t1r": {
+      "word": null,
+      "seen": true
+    },
+    "t1s": {
+      "word": null,
+      "seen": true
+    },
+    "t1t": {
+      "word": null,
+      "seen": true
+    },
+    "t1v": {
+      "word": null,
+      "seen": true
+    },
+    "t1w": {
+      "word": null,
+      "seen": true
+    },
+    "t1x": {
+      "word": null,
+      "seen": true
+    },
+    "t1y": {
+      "word": null,
+      "seen": true
+    },
+    "t1z": {
+      "word": "done",
+      "seen": true
+    },
+    "t2": {
+      "word": null,
+      "seen": true
+    },
+    "t20": {
+      "word": null,
+      "seen": true
+    },
+    "t21": {
+      "word": null,
+      "seen": true
+    },
+    "t3": {
+      "word": null,
+      "seen": true
+    },
+    "t4": {
+      "word": null,
+      "seen": true
+    },
+    "t5": {
+      "word": null,
+      "seen": true
+    },
+    "t6": {
+      "word": null,
+      "seen": true
+    },
+    "t7": {
+      "word": null,
+      "seen": true
+    },
+    "t8": {
+      "word": null,
+      "seen": true
+    },
+    "t9": {
+      "word": null,
+      "seen": true
+    }
+  }
+}

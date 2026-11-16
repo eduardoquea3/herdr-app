@@ -1,0 +1,258 @@
+{
+  "nodes": {
+    "sidebar": {
+      "hidden": true
+    }
+  },
+  "file": {
+    "id": "root",
+    "type": "column",
+    "children": [
+      {
+        "id": "titlebar",
+        "type": "block",
+        "content": {
+          "mod": "zed-title"
+        },
+        "size": {
+          "px": 32.0
+        },
+        "background": "chrome",
+        "window_drag": true
+      },
+      {
+        "id": "body",
+        "type": "row",
+        "children": [
+          {
+            "id": "sidebar",
+            "type": "column",
+            "children": [
+              {
+                "id": "new-space",
+                "type": "block",
+                "content": {
+                  "mod": "zed-new-space"
+                },
+                "size": {
+                  "px": 88.0
+                },
+                "background": "chrome"
+              },
+              {
+                "id": "spaces",
+                "type": "block",
+                "content": {
+                  "mod": "spaces"
+                },
+                "size": {
+                  "weight": 1.0
+                },
+                "min": 90.0
+              },
+              {
+                "id": "agents",
+                "type": "block",
+                "content": {
+                  "mod": "agents"
+                },
+                "size": {
+                  "weight": 1.0
+                },
+                "min": 90.0
+              },
+              {
+                "id": "sidebar-footer",
+                "type": "block",
+                "content": {
+                  "mod": "zed-sidebar-footer"
+                },
+                "size": {
+                  "px": 112.0
+                },
+                "background": "chrome"
+              }
+            ],
+            "size": {
+              "px": 300.0
+            },
+            "min": 44.0,
+            "max": 560.0,
+            "background": "chrome",
+            "divider": {
+              "width": 1.0,
+              "color": "border"
+            }
+          },
+          {
+            "id": "work",
+            "type": "column",
+            "children": [
+              {
+                "id": "tabs",
+                "type": "row",
+                "children": [
+                  {
+                    "id": "tabs-strip",
+                    "type": "block",
+                    "content": {
+                      "mod": "zed-tabs"
+                    },
+                    "size": {
+                      "weight": 1.0
+                    },
+                    "background": "chrome"
+                  },
+                  {
+                    "id": "tabs-commands",
+                    "type": "block",
+                    "content": {
+                      "mod": "zed-commands"
+                    },
+                    "size": {
+                      "px": 190.0
+                    },
+                    "min": 0.0,
+                    "background": "chrome"
+                  }
+                ],
+                "size": {
+                  "px": 34.0
+                },
+                "background": "chrome"
+              },
+              {
+                "id": "main",
+                "type": "block",
+                "content": {
+                  "tab": "active",
+                  "pane": {
+                    "background": "background",
+                    "border": {
+                      "width": 1.0,
+                      "color": "border"
+                    },
+                    "focus": {
+                      "width": 1.0,
+                      "color": "accent"
+                    },
+                    "radius": 0.0,
+                    "gap": 0.0
+                  }
+                }
+              }
+            ],
+            "background": "background"
+          },
+          {
+            "id": "panel",
+            "type": "column",
+            "children": [
+              {
+                "id": "panel-body",
+                "type": "stack",
+                "children": [
+                  {
+                    "id": "files",
+                    "type": "block",
+                    "content": {
+                      "mod": "zed-file-icons"
+                    }
+                  },
+                  {
+                    "id": "changes",
+                    "type": "block",
+                    "content": {
+                      "mod": "zed-changes"
+                    }
+                  }
+                ],
+                "active": "files"
+              }
+            ],
+            "size": {
+              "px": 320.0
+            },
+            "min": 220.0,
+            "max": 640.0,
+            "hidden": true,
+            "background": "chrome"
+          }
+        ],
+        "divider": {
+          "width": 1.0,
+          "color": "border"
+        }
+      },
+      {
+        "id": "status",
+        "type": "row",
+        "children": [
+          {
+            "id": "status-main",
+            "type": "block",
+            "content": {
+              "mod": "workspace-status"
+            },
+            "size": {
+              "weight": 1.0
+            }
+          },
+          {
+            "id": "status-quota",
+            "type": "block",
+            "content": {
+              "mod": "zed-quota",
+              "props": {
+                "hidden": [
+                  "cursor",
+                  "copilot"
+                ],
+                "windows": {
+                  "grok": [
+                    "credits"
+                  ]
+                }
+              }
+            },
+            "size": {
+              "px": 400.0
+            },
+            "min": 0.0,
+            "background": "chrome"
+          },
+          {
+            "id": "status-panels",
+            "type": "block",
+            "content": {
+              "mod": "zed-panel-switch"
+            },
+            "size": {
+              "px": 64.0
+            },
+            "background": "chrome"
+          }
+        ],
+        "size": {
+          "px": 28.0
+        },
+        "background": "chrome"
+      }
+    ],
+    "background": "background",
+    "theme": "ayu",
+    "font": "JetBrains Mono",
+    "font_size": 14.0,
+    "ui_font": "Geist",
+    "terminal_padding": [
+      6.0,
+      8.0
+    ],
+    "titlebar": "none",
+    "traffic_lights": [
+      10.0,
+      8.0
+    ],
+    "preview": "layouts/zed.svg"
+  }
+}
