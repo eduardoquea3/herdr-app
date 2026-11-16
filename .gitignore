@@ -1,3 +1,6 @@
 .kanso-source/
 /view.json
 /telemetry/
+/seen.json
+/shared.json
+/data/frame-palette/
