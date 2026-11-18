@@ -5,5 +5,10 @@
 /shared.json
 /data/
 /layouts/.state/
+/gpui-kit.d.ts
+/installed.json
+/update-notes.json
+/window.json
+/herdr-app.sock
 /mods/*/gpui-kit.d.ts
 /mods/*/jsconfig.json
