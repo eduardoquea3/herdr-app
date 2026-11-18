@@ -25,7 +25,7 @@ function place(s, ps) {
   const tabs = new Set((s.tabs ?? []).map((c) => c.id));
   return ps.find((p) => tabs.has(p.tab) && p.cwd)?.cwd || s.folder;
 }
-const rowHeight = ({ tree }) => (tree ? 28 : 30);
+const rowHeight = ({ tree }) => (tree ? 40 : 42);
 const RAIL_CELL = 32;
 const railCell = (el) => h_flex().flex_none().justify_center().child(el);
 const where = (s, ps) => JSON.stringify([s.machine ?? null, place(s, ps)]);
@@ -218,13 +218,17 @@ export default class Spaces extends View {
       }
       // The repo's own .git folder names it; a worktree's top differs from it.
       const top = r.stdout.replace(/\n$/, ""), repo = common.stdout.replace(/\n$/, "");
-      const [branch, counts] = await Promise.all([
+      const [branch, counts, status] = await Promise.all([
         exec("git", ["symbolic-ref", "-q", "HEAD"], { cwd, on }),
         exec("git", ["rev-list", "--left-right", "--count", "HEAD...@{upstream}"], { cwd, on }),
+        exec("git", ["status", "--porcelain=v1", "-z", "--untracked-files=all"], { cwd, on }),
       ]);
       const name = repo.endsWith("/.git") ? base(repo.slice(0, -5)) : base(repo).replace(/\.git$/, "");
       const [ahead, behind] = counts.code === 0 ? counts.stdout.trim().split(/\s+/).map(Number) : [0, 0];
-      const info = { name, branch: branch.code === 0 ? branch.stdout.trim().replace(/^refs\/heads\//, "") : "(detached)", ahead, behind, repo: JSON.stringify([on, repo]), linked: repo !== `${top}/.git` };
+      const entries = status.code === 0 ? status.stdout.split("\0").filter(entry => entry.length >= 3 && entry[2] === " ") : [];
+      const staged = entries.filter(entry => entry[0] !== " " && entry[0] !== "?").length;
+      const changed = entries.filter(entry => entry[1] !== " " || entry.startsWith("??")).length;
+      const info = { name, branch: branch.code === 0 ? branch.stdout.trim().replace(/^refs\/heads\//, "") : "(detached)", ahead, behind, staged, changed, repo: JSON.stringify([on, repo]), linked: repo !== `${top}/.git` };
       this.git[key] = info;
       if (!on) this.watch(repo, cx);
     } catch {
@@ -374,26 +378,15 @@ export default class Spaces extends View {
     });
   }
 
-  // Only what's unusual, after the name: "herdr \u00b7 spike \u21912 \u21931". The repo or
-  // branch goes when the name already says it (a worktree is named after its branch),
-  // and master/main go: nearly every space is on one.
-  gitTail(g, tree, name, t) {
-    const raw = g.branch ?? "detached";
-    const same = (a) => a.toLowerCase() === name.toLowerCase();
-    const branch = same(raw) || raw === "master" || raw === "main" ? "" : raw;
-    const repo = tree || same(g.name) ? "" : g.name;
-    const where = [repo, branch].filter(Boolean).join(" \u00b7 ");
-    return h_flex()
-      .flex_1()
-      .min_w(0)
-      .gap(5)
-      .justify_end()
-      .items_center()
-      .text_size(11.5)
-      .text_color(t.dim)
-      .when(Boolean(where), (el) => el.child(div().min_w(0).truncate().child(where)))
-      .when(g.ahead > 0, (el) => el.child(div().flex_none().text_color(t.ansi2).child(`\u2191${g.ahead}`)))
-      .when(g.behind > 0, (el) => el.child(div().flex_none().text_color(t.ansi1).child(`\u2193${g.behind}`)));
+  // Branch and Git counters live below the space name so neither truncates the other.
+  gitTail(g, tree, t) {
+    return h_flex().flex_1().min_w(0).gap(5).items_center().text_size(10.5).text_color(t.dim)
+      .child(svg("mods/workspace-chrome/branch.svg").size(11).flex_none().text_color(t.muted))
+      .child(div().flex_1().min_w(0).truncate().text_color(t.muted).tooltip(g.branch).child(g.branch))
+      .when(g.staged > 0, el => el.child(div().flex_none().text_color(t.ansi2).tooltip("Staged changes").child(`+${g.staged}`)))
+      .when(g.changed > 0, el => el.child(div().flex_none().text_color(t.ansi3).tooltip("Unstaged or untracked changes").child(`~${g.changed}`)))
+      .when(g.ahead > 0, el => el.child(div().flex_none().text_color(t.ansi2).tooltip("Commits ahead of upstream").child(`↑${g.ahead}`)))
+      .when(g.behind > 0, el => el.child(div().flex_none().text_color(t.ansi1).tooltip("Commits behind upstream").child(`↓${g.behind}`)));
   }
 
   row({ w, i, g, tree }, t) {
@@ -406,6 +399,7 @@ export default class Spaces extends View {
       .relative()
       .id(`space-${w.id}`)
       .px(8)
+      .mb(4)
       .h(rowHeight({ tree }))
       .flex_none()
       .justify_center()
@@ -444,12 +438,13 @@ export default class Spaces extends View {
       .on_mouse_down("right", () => this.menu(w))
       .child(
         h_flex()
-          .gap(9)
+          .gap(8)
           .items_center()
           .when(Boolean(tree), el => el.pl(22).child(svg("mods/workspace-chrome/branch.svg").size(13).text_color(t.dim)))
           .when(!tree, el => el.child(h_flex().size(18).flex_none().rounded(5).bg(fill).items_center().justify_center().text_size(10.5).font_bold().text_color("#ffffff").child([...w.name][0]?.toUpperCase() ?? "?")))
-          .child(div().flex_shrink(0).max_w(150).truncate().text_color(t.foreground).child(w.name))
-          .child(g ? this.gitTail(g, tree, w.name, t) : div().flex_1())
+          .child(v_flex().flex_1().min_w(0).gap(2)
+            .child(div().min_w(0).truncate().text_color(t.foreground).child(w.name))
+            .when(Boolean(g), el => el.child(this.gitTail(g, tree, t))))
           .child(this.spaceFold(w, t)),
       );
   }
@@ -522,7 +517,7 @@ export default class Spaces extends View {
     const mark = a.status === "working"
       ? svg("mods/workspace-chrome/spinner.svg").size(12).flex_none().text_color(color).spin(900)
       : div().size(7).flex_none().rounded(4).bg(color);
-    return h_flex().id(`space-agent-${a.address}`).h(27).flex_none().ml(statusView ? 8 : 27).mr(8).px(7).gap(8).items_center().rounded(7)
+    return h_flex().id(`space-agent-${a.address}`).h(27).mt(2).flex_none().ml(statusView ? 8 : 27).mr(8).px(7).gap(8).items_center().rounded(7)
       .text_size(12).text_color(a.focused ? t.foreground : t.muted).hover(s => s.bg(t.hover).text_color(t.foreground))
       .tooltip(`${a.program?.name ?? "Agent"} · ${a.status}`)
       .on_click(() => run("pane.focus", { terminal: a.address }))

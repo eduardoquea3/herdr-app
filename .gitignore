@@ -12,3 +12,5 @@
 /herdr-app.sock
 /mods/*/gpui-kit.d.ts
 /mods/*/jsconfig.json
+config.bat
+node_modules
