@@ -1,36 +1,21 @@
 {
   "id": "root",
   "type": "row",
-  "titlebar": "none",
-  "traffic_lights": [12, 16],
-  "background": "canvas",
-  "terminal_padding": [0, 0],
-  "divider": {
-    "width": 1,
-    "color": "border"
-  },
   "children": [
     {
       "id": "sidebar",
       "type": "column",
-      "size": {
-        "px": 268
-      },
-      "min": 44,
-      "max": 480,
-      "background": "chrome",
-      "resizable": false,
       "children": [
         {
           "id": "brand",
           "type": "block",
+          "content": {
+            "mod": "workspace-chrome"
+          },
           "size": {
             "px": 46
           },
-          "window_drag": true,
-          "content": {
-            "mod": "workspace-chrome"
-          }
+          "window_drag": true
         },
         {
           "id": "sidebar-lists",
@@ -48,39 +33,51 @@
         {
           "id": "sidebar-footer",
           "type": "block",
-          "size": {
-            "px": 69
-          },
           "content": {
             "mod": "workspace-chrome",
             "props": {
               "footer": true
             }
+          },
+          "size": {
+            "px": 69
           }
         }
-      ]
+      ],
+      "size": {
+        "px": 268
+      },
+      "min": 44,
+      "max": 480,
+      "hidden": true,
+      "background": "chrome",
+      "resizable": false
     },
     {
       "id": "work",
       "type": "column",
-      "resizable": false,
       "children": [
         {
-          "id": "tabs",
-          "type": "block",
+          "id": "tab-bar",
+          "type": "row",
+          "children": [
+            {
+              "id": "tabs",
+              "type": "block",
+              "content": {
+                "mod": "tabs-lazygit"
+              },
+              "window_drag": true
+            }
+          ],
           "size": {
             "px": 42
           },
-          "window_drag": true,
-          "content": {
-            "mod": "tabs"
-          }
+          "resizable": false
         },
         {
           "id": "work-body",
           "type": "row",
-          "padding": 8,
-          "gap": 8,
           "children": [
             {
               "id": "main",
@@ -88,10 +85,15 @@
               "content": {
                 "tab": "active",
                 "pane": {
-                  "gap": 8,
-                  "radius": 10,
+                  "header": {
+                    "content": {
+                      "mod": "pane"
+                    },
+                    "reveal": "always",
+                    "height": 30,
+                    "position": "top"
+                  },
                   "background": "background",
-                  "lone": true,
                   "border": {
                     "width": 1,
                     "color": "border"
@@ -100,14 +102,9 @@
                     "width": 1,
                     "color": "accent"
                   },
-                  "header": {
-                    "content": {
-                      "mod": "pane"
-                    },
-                    "height": 30,
-                    "position": "top",
-                    "reveal": "always"
-                  }
+                  "radius": 10,
+                  "gap": 8,
+                  "lone": true
                 }
               }
             },
@@ -115,16 +112,10 @@
               "id": "panel",
               "type": "column",
               "hidden": true,
-              "size": {
-                "px": 368
-              },
-              "min": 280,
-              "max": 900,
               "children": [
                 {
                   "id": "panel-body",
                   "type": "stack",
-                  "active": "files",
                   "children": [
                     {
                       "id": "files",
@@ -139,24 +130,71 @@
                       "content": {
                         "mod": "changes"
                       }
+                    },
+                    {
+                      "id": "lazygit",
+                      "type": "column",
+                      "children": [
+                        {
+                          "id": "lazygit-bar",
+                          "type": "block",
+                          "content": {
+                            "mod": "lazygit-panel"
+                          },
+                          "size": {
+                            "px": 30
+                          }
+                        },
+                        {
+                          "id": "lazygit-term",
+                          "type": "block",
+                          "hidden": true,
+                          "content": {
+                            "terminal": "none"
+                          }
+                        }
+                      ]
                     }
-                  ]
+                  ],
+                  "active": "files"
                 }
-              ]
+              ],
+              "size": {
+                "px": 520
+              },
+              "min": 280,
+              "max": 900
             }
-          ]
+          ],
+          "padding": 8,
+          "gap": 8
         },
         {
           "id": "status",
           "type": "block",
-          "size": {
-            "px": 28
-          },
           "content": {
             "mod": "workspace-status"
+          },
+          "size": {
+            "px": 28
           }
         }
-      ]
+      ],
+      "resizable": false
     }
+  ],
+  "background": "canvas",
+  "terminal_padding": [
+    0,
+    0
+  ],
+  "divider": {
+    "width": 1,
+    "color": "border"
+  },
+  "titlebar": "none",
+  "traffic_lights": [
+    12,
+    16
   ]
 }
