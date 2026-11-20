@@ -9,6 +9,7 @@
     "alt-7": "space.select:7",
     "alt-8": "space.select:8",
     "alt-9": "space.select:9",
+    "alt-m": "mod.open:floating-terminal",
     "ctrl-shift-h": "pane.go:left",
     "ctrl-shift-j": "pane.go:down",
     "ctrl-shift-k": "pane.go:up",
