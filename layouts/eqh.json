@@ -31,6 +31,16 @@
           ]
         },
         {
+          "id": "wsl",
+          "type": "block",
+          "content": {
+            "mod": "wsl"
+          },
+          "size": {
+            "px": 34
+          }
+        },
+        {
           "id": "sidebar-footer",
           "type": "block",
           "content": {

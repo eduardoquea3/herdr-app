@@ -71,5 +71,8 @@
   },
   "layout:eqh": {
     "ctrl-g": "tabs-lazygit.toggle"
+  },
+  "layout:main-wsl": {
+    "ctrl-shift-n": "wsl.new-space"
   }
 }
