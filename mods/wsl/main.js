@@ -138,6 +138,7 @@ export default class Wsl extends View {
   }
 
   render() {
+    if (!this.available) return div();
     const t = theme();
     const state = this.state();
     // A state this version doesn't know (a newer Herdr) shows as itself.
