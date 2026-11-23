@@ -13,7 +13,7 @@
 // computer with WSL spaces.
 import { View, div } from "gpui-kit";
 import { h_flex } from "gpui-base";
-import { appHome, exec, hc, machines, nextCommand, panes, readTextFile, run, spaces, terminals, theme } from "herdr";
+import { appHome, exec, hc, machines, nextCommand, panes, readTextFile, run, spaces, terminals, theme, window } from "herdr";
 
 const KEEPALIVE = "wsl-keepalive"; // hidden local terminal holding a wsl.exe session open
 const NUDGE_EVERY = 15000;        // ms between reconnect attempts while the machine is offline
@@ -38,7 +38,10 @@ async function defaultDistro() {
 
 export default class Wsl extends View {
   init(_props, cx) {
+    const appWindow = window();
+    this.available = !appWindow || appWindow.platform === "windows";
     this.width = 240;
+    if (!this.available) return;
     this.machine = "wsl";
     this.distro = null;      // null: WSL's default distro
     this.redirect = false;   // config redirect_local

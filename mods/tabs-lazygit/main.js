@@ -121,13 +121,13 @@ export default class Tabs extends View {
       if (active >= 0) this.scroll.scroll_to_item(active);
     }
     const stop = (_e, cx) => cx.stop_propagation();
-    const button = (id, label, action) => div().id(id).size(26).flex_none().flex().items_center().justify_center().rounded(6).text_color(t.dim).hover(s => s.bg(t.hover).text_color(t.foreground))
+    const button = (id, label, action) => div().id(id).size(24).flex_none().flex().items_center().justify_center().rounded(4).text_color(t.dim).hover(s => s.bg(t.hover).text_color(t.foreground))
       .on_mouse_down("left", stop).on_click(action).child(label);
     const item = (c, i) => {
       const lead = panes().find(p => p.tab === c.id && p.program?.agent) ?? panes().find(p => p.tab === c.id);
       const program = lead?.program;
       const name = label(c, lead);
-      return h_flex().id(`tab-${c.id}`).h(29).px(10).gap(7).rounded(7).items_center().flex_none().text_size(12.8)
+      return h_flex().id(`tab-${c.id}`).h(24).px(10).gap(7).rounded(2).items_center().flex_none().text_size(12)
         // A rename or status dot on this or an earlier tab can push the active one out.
         .when(i <= active, el => el.on_size_change((_size, cx) => { this.scroll.scroll_to_item(active); cx.notify(); }))
         .border(1).border_color(c.active ? t.border : t.chrome).bg(c.active ? t.raised : t.chrome).text_color(c.active ? t.foreground : t.muted)
@@ -159,7 +159,7 @@ export default class Tabs extends View {
     this.syncPanel(space, panel, body, enabled);
     const panelButton = (id, icon) => {
       const on = panel && !panel.hidden && body?.active === id;
-      return h_flex().id(`panel-${id}`).size(26).flex_none().flex().items_center().justify_center().rounded(6)
+      return h_flex().id(`panel-${id}`).size(24).flex_none().flex().items_center().justify_center().rounded(4)
         .text_size(12).bg(on ? t.selected : t.chrome).text_color(on ? t.foreground : t.muted)
         .hover(s => s.bg(t.hover)).on_mouse_down("left", stop)
         .on_click(() => {
@@ -168,7 +168,7 @@ export default class Tabs extends View {
         }).child(svg(icon).size(14));
     };
     const lazygitOn = panel && !panel.hidden && body?.active === LAZYGIT_PAGE;
-    const lazygitButton = () => h_flex().id("panel-lazygit").size(26).flex_none().flex().items_center().justify_center().rounded(6)
+    const lazygitButton = () => h_flex().id("panel-lazygit").size(24).flex_none().flex().items_center().justify_center().rounded(4)
       .text_color(lazygitOn ? t.foreground : t.muted).bg(lazygitOn ? t.selected : t.chrome)
       .hover(s => s.bg(t.hover)).on_mouse_down("left", stop)
       .on_click(() => this.toggleLazygit()).child(svg("mods/lazygit-panel/lazygit.svg").size(14));
